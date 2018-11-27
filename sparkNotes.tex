@@ -1,0 +1,85 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{dot2texi}
+\makeatletter
+\@ifundefined{verbatim@out}{\newwrite\verbatim@out}{}
+\makeatother
+\usepackage{tikz}
+\usepackage{hyperref}
+\usetikzlibrary{shapes,arrows}
+% \usepackage[pdf]{graphviz}
+%\usepackage{feynmp}
+\usepackage{subfigure}
+\usepackage{dsfont}
+\graphicspath{{figs/}}
+
+\title{Deep Learning Notes}
+
+\author{Peter Thompson}
+
+\begin{document}
+
+\section{Questions}
+\begin{itemize}
+    \item {\bf Tasks/cores/executors}
+    \begin{itemize}
+        \item in databricks, can we specify only 2 (for instance) executors for a node with 8 cpus?
+        \item if so, are these executors/jvms aware that the node has more cpus available? Are they accessible
+        Use case - want to run some non-spark multithreaded code, e.g. distribute 1 xgboost job to each node, with each job using c cores
+        \item Ali said that he turned off autoscaling and had one executor per node. (8 cores per node)
+    \end{itemize}
+    \item {\bf joining} 
+        We have (say) a small list of collector ids, and want to left join with 5-6 large tables (millions of collector ids, thousands of columns)
+        What is the best (optimal) way to do this? More shuffle partitions are better? more data partitions?  
+    \end{itemize}
+
+\section{Joining}
+    \subsection{links}
+    \begin{itemize}
+        \item \url{https://databricks.com/session/optimizing-apache-spark-sql-joins} 30 minute video, good overview
+        \item \url{https://sujithjay.com/spark-sql/2018/02/17/Broadcast-Hash-Joins-in-Apache-Spark/} part one of a series
+    \end{itemize}
+
+    \subsection{Shuffle Hash join}
+    Pretty (most?) common type of join. Data from table 1 and table 2 are partitioned by key. Matching partitions are sent to the same executor, then the output is merged.
+    This works best when
+    \begin{itemize}
+        \item data is evenly distributed by key
+        \item good number of keys (unique values - monthid would be a bad key (12 unique values))
+    \end{itemize}
+    When these conditions can't be satisfied, then broadcast hash join might be suitable
+
+    Diagnosing problems
+    \begin{itemize}
+        \item Tasks that take a long time - could be uneven sharding (keys not distributed evenly).
+        \item Speculative tasks - if something takes a long time on one exdecutor, spark might send think theres a problem there and send the task to another to see if ti works there. If one particular task spawns speculative tasks, this can also be a sign that there is a sharding problem.
+        \item Shuffle read/write memory - take a look to see if there is one task sending/receiving a lot of data (more than average)
+        \item ls across the output files - see if one data partition is much larger than others
+    \end{itemize}
+
+    \subsection{broadcast hash join}
+    Small table sent to every executor, each partition is joined with the entire table, then output is returned. Bestest performance. Spark will automatically broadcast tables that are smaller than \verb|spark.sql.autoBroadcastJoinThreshold|, which is 10 MB by default. Giving hints can override this behaviour, but if the broadcasted table is too big you may OOM your cluster.
+    For right outer join, Spark can only broadcast the left side. For left outer, left semi, left anti and the internal join type ExistenceJoin, Spark can only broadcast the right side. I have had cases where I want to join a small list of collectors, tableA, (one column of collector keys) to a bigger table (millions of rows, thousands of columns). Normally I would do \verb|c = tableA.join(tableB,['COLLECTOR_KEY'],how='left')|. To use broadcasting, the join has to be righted: \verb|c = tableB.join(broadcast(tableA),['COLLECTOR_KEY'],how='right')|. 
+
+    \verb|df.explain()| on the output will tell whether a shuffle hash or broadcast hash join is being made
+    (spark can sometimes have a hard time figuring out when to use a broadcast join with stuff in hive. giving a hint might be handy).
+
+\subsection{Cartesian join (cross join)}
+\begin{itemize}
+\item create an rdd of uid by uid pairs
+\item broadcast that
+\item call a udf that retrieves data from the big tables given the uid,uid pairs
+\end{itemize}
+
+\subsection{one to many join (one sided cartesian)}
+- number of rows can explode
+not a big del with parquet - duplicate data encodes well (for output files)
+
+\subsection{theta join}
+join tableA with TableB on (keyA < keyB +10)
+  - Spark will treat this as a cartesian join
+  - Much better to bucket A and B, and create an intial paritioning based on bucket equality
+
+\end{document}
+
+

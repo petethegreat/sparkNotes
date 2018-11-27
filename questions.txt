@@ -1,0 +1,9 @@
+# Questions to ask at spark training
+
+1. Tasks/cores/executors.
+    1a - in databricks, can we specify only 2 (for instance) executors for a node with 8 cpus?
+    1b - if so, are these executors/jvms aware that the node has more cpus available? Are they accessible
+    Use case - want to run some non-spark multithreaded code, e.g. distribute 1 xgboost job to each node, with each job using c cores
+    1c. Ali said that he turned off autoscaling and had one executor per node. (8 cores per node)
+
+

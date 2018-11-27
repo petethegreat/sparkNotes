@@ -1,0 +1,115 @@
+nodes have executors have cpus (slots)
+spark ui -> cores
+more cpus will make more faster, provided stage has more tasks than cpus, time ~ tasks/cpu
+can also scale up partitinos, redistribute data, then more cpus will help more
+
+i3 - optimised for network, ssd, pretty cool
+
+partitions - data divided up into chunks, piece of work
+shuffle - mergesort, break it up, sort/rearrange it
+shuffle partitions 
+ - default shuffle partitions is 200
+ - pieces in which data is saved - these are moved/copied when shuffling
+ 
+EBS - volume - autoscaling is cool
+drivers - small. THese don't need to be big
+  -- deep learning/graphical stuff. If there's lots going back to the driver, then it can be bigger (want to ensure there's enough memory)
+  
+autoscaling - min and max
+describe/explain shows how data is partitioned by (indexed)
+
+fall back to on demand
+
+can increase node size and decrease bid price
+
+ctype - more cores per node - compute optimised - good for training (computation intensive)
+
+1 GB per shuffle partition (max) is a good rule of thumb
+
+# Data Skew
+spark.sql.shuffle_partitions
+
+shuffle partitinos - 2 x no cores - rule of thumb
+
+createorreplacetempview - allows sql
+
+getnumpartitions - how many partitinos used
+
+glom() - returns list of lists of data. One (internal) list per partition- never run collect after glom
+
+spark read - by default uses a row hash partiitoner to distribute rows amongst partitions
+
+click on job/task/ little i
+if locality is not local, then data needs to be shuffled to complete task - not good
+
+describe on key column - 
+
+## Resolve Skew
+
+broadcast smaller table - copies smaller table to all slots
+cache/persist - keep in the memory
+
+10 GB table 
+  - cache will take up 10GB across cluster
+  - broadcast will take up 10GB on each slot - can be expensive
+
+item.join(F.broadcast(basket),['joincolumn'],'inner').count()
+suggest that we broadcast the basket table 
+
+
+Skew hint
+in sql
+select /** SKEW('item',storenumber',('vqlue1,value2,value3)) */ count(*) from table join on table2 ...
+tells spark that storenumber column in item table is skewed. (specifically the values listed - thes are optional)
+only available in scala and sql (not python)
+in python, either use spark.sql, or %sql magic in notebook
+skewjoin is new, doesn't directly show up in notebook (looks like nothing is happening), but can be seen in cluster->sparkui
+
+can do groupby count to get the biggest (most skewed?) values, and use skew joining optimisation for those values
+
+broadcast threshold - default is 10.4 MB, tables lower than this are magically broadcast
+
+more cores vs bigger cores - bigger ones can hold more broadcasted data
+
+
+after broadcast/persist/cache - important to cleanup (persist/unpersist (uncache?))
+
+item.persist().count()
+...
+item.unpersist()
+cached partitions and fraction cached will show up in job details
+
+
+SQL tab - shows what's going on. very useful
+
+sizeestimator - how big (in bytes) is dataframe
+size on disk will be bigger - in memory things get compressed
+
+
+look for large shuffles
+
+spark.conf.get('spark.sql.shuffle.partitions')
+
+# how to count
+%sql
+describe formatted table.column
+-> will give location in s3
+
+dbutils.fs.ls('filename')
+
+
+Marcin, Manny (Emmanual) on slack for questions
+
+
+
+  
+
+ 
+
+
+
+
+
+ 
+ 
+ 
