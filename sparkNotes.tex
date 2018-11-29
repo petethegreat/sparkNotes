@@ -31,6 +31,8 @@
     \item {\bf joining} 
         We have (say) a small list of collector ids, and want to left join with 5-6 large tables (millions of collector ids, thousands of columns)
         What is the best (optimal) way to do this? More shuffle partitions are better? more data partitions?  
+    \item {\bf joining also} - Build/stream? what are these? is this for hashing?
+
     \end{itemize}
 
 \section{Joining}
@@ -48,6 +50,8 @@
         \item good number of keys (unique values - monthid would be a bad key (12 unique values))
     \end{itemize}
     When these conditions can't be satisfied, then broadcast hash join might be suitable
+    NOTE spark config option,\verb|spark.sql.join.preferSortMergeJoin|, (set true by default), essentially means that Sort Merge join is always chosen over shuffle hash join
+
 
     Diagnosing problems
     \begin{itemize}
@@ -79,6 +83,69 @@ not a big del with parquet - duplicate data encodes well (for output files)
 join tableA with TableB on (keyA < keyB +10)
   - Spark will treat this as a cartesian join
   - Much better to bucket A and B, and create an intial paritioning based on bucket equality
+
+\section{rough}
+
+parallelism 
+
+Transformations
+narrow transformations are where each input partition contributes to one output partition.
+Spark pipelines stuff - in narrow transformations, things like filters are all performed in memory.
+Wide transformations are those where a SHUFFLE is required, an output partition requires data from multiple input partitions.
+Shuffles transfer data across the network, and results are written to disk.
+
+lazy evaluation
+spark doesn't do anything untill you need a result. Predicate pushdown - if you filter at different stages, these get pushed down as far as possible, so spark only deals with the minimum amount of data required. This allows for lots of optimisation
+
+Actions
+There are three types of actions
+- actions to view datsa in the console (.show(), display in databricks)
+- actions to collect results at driver (collect())
+- actions to write data (write)
+
+Explain can be called on any dataframe. It will show the physical plan for processing the data to carry out all the transformations. The top of the plan is the end result, the bottom are the inputs. The logical plan is the set of transformations specified, the physical plan is what spark will do to get the result, 
+
+
+###################################
+berkely amp lab
+
+started by Matei Zaharia. Was working on netflix prize using mapreduce, tried to make it better and invented spark, tied for netflix prize, but ended up second.
+certification
+
+catalyst optimiser - spark dataframes can be 5-20X faster than regular RDDs
+yet another resource negotiater
+
+Performance - dataframe performance is really good, and there is no difference between python, scala, R or SQL. When working with RDDs, Scala performs better than Python (about 2x)
+Catalyst - binds python (or R or SQL) dataframe functionality to scala based operations. Fast
+
+architecture - driver -> executor -> slot. Typically worker nodes have one excutor, and that has one slot (process thread) per cpu available
+
+
+Jobs are made of stages
+each stage is the set of operations that can be run in parallel without dependencies (shuffling)
+
+databricks - ripple shell?
+displayHTML - can pretty display things
+
+
+anytime you create a spark session (dataframe interface stuff), a spark context named sc is created automagically
+
+documentation for spark - python and scala are maintained by different people, check scala docs if python ones seem to be lacking
+
+jobs created when spark needs to touch data
+When you spark.read, this is not an action
+a job is created, and run eagerly, on spark.read. This is to get an idea of the schema
+
+nullable things in schema aren't used by spark, but are to maintain compatibility with other databases (parquet?)
+
+parquet
+google dremel project - released white paper, desxcribes file format
+parquet derived from this
+preserves dataframe info - both metadata and row/column data
+
+read.parquet executes (eagerly) one very small spark job to read metadata. read.csv reads entire file (all data)
+can specify the schema even for parquet files, this avoids the (small) job to read metadata
+
 
 \end{document}
 
