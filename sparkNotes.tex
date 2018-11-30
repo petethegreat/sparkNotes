@@ -124,7 +124,7 @@ architecture - driver -> executor -> slot. Typically worker nodes have one excut
 Jobs are made of stages
 each stage is the set of operations that can be run in parallel without dependencies (shuffling)
 
-databricks - ripple shell?
+databricks - REPL shell
 displayHTML - can pretty display things
 
 
@@ -145,6 +145,50 @@ preserves dataframe info - both metadata and row/column data
 
 read.parquet executes (eagerly) one very small spark job to read metadata. read.csv reads entire file (all data)
 can specify the schema even for parquet files, this avoids the (small) job to read metadata
+
+# Dataframes
+anything that returns not a dataframe is an action. triggers evaluation
+
+dataset - rdd of type specific stuff. Stringly typed. Collection of classes.
+Not available in python, only have dataframes. Dataframes are datasets of row objects. One row may have different columns to another. 
+
+Caching - when an action is called, spark figures out the lineage (physical plan? logical plan?) and builds the dag. When it hits some data that's been cached then it uses that and does not go back further.
+
+
+#Transformations and actions
+Narrow transformatoins are those that do not require a shuffle. The transformation can happen within each partition
+Wide transformations require data from other partitions. These require a shuffle
+A stage is a set of jobs that happen within partitions. A set of narrow transformations. 
+green dots in the dag are cache points
+
+Catalyst Optimiser
+sequence of api calls and action -> unresolved logical plan -> check catalog (from hive, make sure all columns exist) -> resolved logical plan -> optimised logical plan (first pass, move filters down) -> series of physical plans (lots of paths to get the same result) -> check cost of each plan -> choose best -> do stuff, result (runs on rdds)
+udfs can screw up optimisation.
+catalyst assumes udfs run in jvm (judf is in java or scala )
+python udfs are particulary difficult. Data may need to be taken out of the jvm, run through a python interpreter, put back into jvm and back into dag.
+python udfs are bad.
+
+https://spark-summit.org/2016/events/deep-dive-into-catalyst-apache-spark-20s-optimizer
+https://www.youtube.com/watch?v=6bCpISym_0w
+https://databricks.com/blog/2015/04/13/deep-dive-into-spark-sqls-catalyst-optimizer.html
+http://people.csail.mit.edu/matei/papers/2015/sigmod_spark_sql.pdf
+
+
+
+Wide and Narrow
+Wide transformations shuffle data. If we are using 4 shuffle partitions, then for each datapartition we hash data into 4 partitions, and write out a file for each partition. Then we send each file to the corresponding executor.  GetPartition is the function that figures out which shuffle partition a record goes into
+
+
+Cache can screw things up. If data is cached in the middle of a pipeline, then spark can't push predicates(filters) down past there. In some cases, removing the cache means the filter can move right to the beginning, which speeds up a bunch of stuff
+
+spark will combine as many narrow operations as it can into a single task
+
+Caching before a shuffle is pointless. Spark will track back from the action to the shuffle, and get to the files on disk, those sent to the node on the second part of the shuffle. It will never go back through the shuffle to reach the cache. The transformations and actions notebook has some of this
+
+*** Jobs/Actions - one job per RDD ACTION. Catalyst will take the dataframe code (API), run it throguh catalyst and get an optimised logical plan (which is formed in terms of transformations and actions on the underlying RDD). There is one spark job per RDD action in the optimised plan. So a sequence of dataframe transformations may result in a single (dataframe) action, which is optimised to multiple RDD actions, resulting in multiple jobs
+
+
+
 
 
 \end{document}
